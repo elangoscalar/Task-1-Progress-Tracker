@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Study Progress Tracker</title>
+<style>
+:root{--bg:#fff;--text:#111;--muted:#555;--line:#ccc;--fill:#111;--fillt:#fff;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111;--text:#eee;--muted:#aaa;--line:#444;--fill:#eee;--fillt:#111;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#111;--text:#eee;--muted:#aaa;--line:#444;--fill:#eee;--fillt:#111;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.4}
+main{max-width:800px;margin:0 auto;padding:16px 14px 80px}
+h1{font-size:22px;margin:0 0 4px}
+h2{font-size:17px;margin:24px 0 2px}
+.sub,.meta,.row{color:var(--muted);font-size:13px}
+table{width:100%;border-collapse:collapse;margin:8px 0}
+td,th{border:1px solid var(--line);padding:6px 8px;text-align:left;font-size:14px;vertical-align:middle}
+th{font-weight:bold}
+.sum td{text-align:center;font-size:18px}
+.sum th{text-align:center;font-size:13px}
+.bar{height:12px;border:1px solid var(--text);display:flex;margin:6px 0 2px}
+.bar i{display:block;height:100%}
+.bd{background:var(--text)}
+.bo{background:repeating-linear-gradient(45deg,var(--text) 0 2px,var(--bg) 2px 5px)}
+.wrap{overflow-x:auto}
+.seg{display:inline-flex;flex-wrap:nowrap;white-space:nowrap}
+.seg button{white-space:nowrap;font:inherit;font-size:13px;background:var(--bg);color:var(--text);border:1px solid var(--text);padding:4px 8px;cursor:pointer;margin-right:-1px}
+.seg button.on{background:var(--fill);color:var(--fillt)}
+.st-d{font-weight:bold}
+.bin{position:fixed;left:0;right:0;bottom:0;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));background:var(--bg);border-top:1px solid var(--line);display:flex;gap:12px;align-items:center;justify-content:center}
+.bin button{font:inherit;background:var(--fill);color:var(--fillt);border:0;padding:8px 14px;cursor:pointer}
+.bin button:disabled{opacity:.5;cursor:default}
+</style>
+</head>
+<body>
+<main id="app"></main>
+
+<script>
+const BOOKS=[
+{id:'w',title:'Fluid Mechanics',author:'Frank M. White (7th ed.)',ch:['Introduction','Pressure Distribution in a Fluid','Integral Relations for a Control Volume','Differential Relations for Fluid Flow','Dimensional Analysis and Similarity','Viscous Flow in Ducts','Flow Past Immersed Bodies','Potential Flow and Computational Fluid Dynamics','Compressible Flow','Open-Channel Flow','Turbomachinery']},
+{id:'a',title:'Fundamentals of Aerodynamics',author:'John D. Anderson Jr. (6th ed.)',ch:['Aerodynamics: Some Introductory Thoughts','Aerodynamics: Some Fundamental Principles and Equations','Fundamentals of Inviscid, Incompressible Flow','Incompressible Flow over Airfoils','Incompressible Flow over Finite Wings','Three-Dimensional Incompressible Flow','Compressible Flow: Some Preliminary Aspects','Normal Shock Waves and Related Topics','Oblique Shock and Expansion Waves','Compressible Flow Through Nozzles, Diffusers, and Wind Tunnels','Subsonic Compressible Flow over Airfoils: Linear Theory','Linearized Supersonic Flow','Introduction to Numerical Techniques for Nonlinear Supersonic Flow','Elements of Hypersonic Flow','Introduction to the Fundamental Principles and Equations of Viscous Flow','A Special Case: Couette Flow','Introduction to Boundary Layers','Laminar Boundary Layers','Turbulent Boundary Layers','Navier-Stokes Solutions: Some Examples']}
+];
+const DEADLINE=new Date(2026,11,31,23,59,59);
+const LBL={n:'Not started',o:'Ongoing',d:'Completed'};
+const app=document.getElementById('app');
+let state={updated:'',c:{}};
+let canEdit=false,pw='',msg='',loaded=false,failed=false;
+// Password is kept in memory only; it is never stored in browser storage.
+
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const get=id=>state.c[id]||{s:'n',d:''};
+const fmt=iso=>{if(!iso)return '';const d=new Date(iso);return isNaN(d)?'':d.toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'})};
+function counts(ids){const r={n:0,o:0,d:0};ids.forEach(i=>r[get(i).s]++);return r}
+function bar(c,t){return '<div class="bar"><i class="bd" style="width:'+c.d/t*100+'%"></i><i class="bo" style="width:'+c.o/t*100+'%"></i></div>'}
+function render(){
+  const all=[];BOOKS.forEach(b=>b.ch.forEach((_,i)=>all.push(b.id+(i+1))));
+  const c=counts(all),T=all.length,pct=Math.round(c.d/T*100);
+  const days=Math.max(0,Math.ceil((DEADLINE-new Date())/864e5));
+  let h='<h1>Study Progress Tracker</h1>';
+  h+='<div class="sub">2 books, '+T+' chapters. Deadline: 31 Dec 2026.'+(state.updated?' Last updated: '+fmt(state.updated)+'.':'')+(canEdit?' (Edit mode)':' (View only)')+'</div>';
+  if(failed)h+='<div class="sub">Could not load progress. Please refresh.</div>';
+  h+='<table class="sum"><tr><th>Completed</th><th>Ongoing</th><th>Not started</th><th>Days left</th></tr><tr><td>'+c.d+'</td><td>'+c.o+'</td><td>'+c.n+'</td><td>'+days+'</td></tr></table>';
+  h+=bar(c,T)+'<div class="row">'+pct+'% completed overall. Solid = completed, striped = ongoing.</div>';
+  BOOKS.forEach(b=>{
+    const ids=b.ch.map((_,i)=>b.id+(i+1)),bc=counts(ids);
+    h+='<h2>'+esc(b.title)+'</h2><div class="sub">'+esc(b.author)+'</div>'+bar(bc,ids.length)+'<div class="row">'+bc.d+' completed, '+bc.o+' ongoing, '+bc.n+' not started ('+Math.round(bc.d/ids.length*100)+'%)</div>';
+    h+='<div class="wrap"><table><tr><th>No.</th><th>Chapter</th><th>Status</th><th>Changed on</th></tr>';
+    b.ch.forEach((t,i)=>{
+      const id=b.id+(i+1),x=get(id);
+      h+='<tr><td>'+(i+1)+'</td><td>'+esc(t)+'</td><td>';
+      if(canEdit)h+='<span class="seg" data-id="'+id+'">'+['n','o','d'].map(k=>'<button data-s="'+k+'" class="'+(x.s===k?'on':'')+'">'+LBL[k]+'</button>').join('')+'</span>';
+      else h+='<span class="st-'+x.s+'">'+LBL[x.s]+'</span>';
+      h+='</td><td>'+(fmt(x.d)||'-')+'</td></tr>';
+    });
+    h+='</table></div>';
+  });
+  h+='<p class="row">'+(canEdit?'<a href="#" id="logout">Log out</a>':'<a href="#" id="login">Owner login</a>')+(msg?' &nbsp; '+esc(msg):'')+'</p>';
+  app.innerHTML=h;
+}
+async function load(){
+  try{
+    const r=await fetch('/api/progress',{cache:'no-store'});
+    const data=await r.json().catch(()=>({error:'The API returned a non-JSON response.'}));
+    if(!r.ok){
+      failed=true;
+      msg=(data.code?data.code+': ':'')+(data.error||'Could not load progress.');
+      render();
+      return;
+    }
+    state=data;
+    failed=false;
+    if(!canEdit) msg='';
+  }catch(e){
+    failed=true;
+    msg='Could not reach /api/progress. Check the deployment and function logs.';
+  }
+  render();
+}
+async function save(){
+  msg='Saving...';render();
+  try{
+    const r=await fetch('/api/progress',{method:'POST',headers:{'Content-Type':'application/json','x-edit-password':pw},body:JSON.stringify(state)});
+    const data=await r.json().catch(()=>({error:'The API returned a non-JSON response.'}));
+    if(r.status===401){
+      canEdit=false;pw='';msg=data.error||'Wrong password.';
+      render();return;
+    }
+    if(!r.ok){
+      msg=(data.code?data.code+': ':'')+(data.error||'Could not save progress.');
+      render();return;
+    }
+    state=data;msg='Saved.';
+  }catch(e){msg='Could not reach /api/progress. Check your connection and Vercel function logs.'}
+  render();
+}
+app.addEventListener('click',e=>{
+  if(e.target.id==='login'){
+    e.preventDefault();
+    const p=prompt('Owner password');
+    if(!p)return;
+    pw=p;msg='Checking password and database...';render();
+    fetch('/api/progress',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-edit-password':pw},
+      body:JSON.stringify({action:'verify'})
+    }).then(async r=>{
+      const data=await r.json().catch(()=>({error:'The API returned a non-JSON response.'}));
+      if(!r.ok){
+        pw='';
+        msg=(data.code?data.code+': ':'')+(data.error||'Login failed.');
+        canEdit=false;
+      }else{
+        canEdit=true;
+        msg='Login successful.';
+      }
+      render();
+    }).catch(()=>{
+      pw='';canEdit=false;
+      msg='Could not reach /api/progress. Check the deployment and function logs.';
+      render();
+    });
+    return;
+  }
+  if(e.target.id==='logout'){
+    e.preventDefault();canEdit=false;pw='';msg='';render();return;
+  }
+  if(!canEdit)return;
+  const b=e.target.closest('.seg button');
+  if(b){const id=b.parentNode.dataset.id,s=b.dataset.s;if(get(id).s!==s){state.c[id]={s:s,d:new Date().toISOString()};save()}}
+});
+render();load();
+setInterval(()=>{if(!canEdit)load()},60000);
+</script>
+</body>
+</html>
